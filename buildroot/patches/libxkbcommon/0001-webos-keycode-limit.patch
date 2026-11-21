@@ -1,0 +1,12 @@
+--- a/src/keymap.h
++++ b/src/keymap.h
+@@ -372,7 +372,8 @@
+  * valid values. Let’s be more conservative for now, based on the existing Linux
+  * keycodes.
+  */
+-#define XKB_KEYCODE_MAX_IMPL 0xfff
++/* webOS includes IR_VIRKEY_TEXTHOLD at 0x5030 in its compositor keymap. */
++#define XKB_KEYCODE_MAX_IMPL 0x5030
+ static_assert(XKB_KEYCODE_MAX_IMPL < XKB_KEYCODE_MAX,
+               "Valid keycodes");
+ static_assert(XKB_KEYCODE_MAX_IMPL < darray_max_alloc(sizeof(xkb_atom_t)),

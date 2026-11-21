@@ -1,0 +1,18 @@
+--- a/Source/WebCore/Sources.txt
++++ b/Source/WebCore/Sources.txt
+@@ -1660,12 +1660,12 @@
+ html/HTMLParagraphElement.cpp
+ html/HTMLParamElement.cpp
+ html/HTMLPictureElement.cpp
+-html/HTMLPlugInElement.cpp @header:RenderStyleGetters @cost:9
++html/HTMLPlugInElement.cpp @no-unify @header:RenderStyleGetters @cost:9
+ html/HTMLPreElement.cpp
+-html/HTMLProgressElement.cpp @header:RenderStyleGetters @cost:6
++html/HTMLProgressElement.cpp @no-unify @header:RenderStyleGetters @cost:6
+ html/HTMLQuoteElement.cpp
+ html/HTMLScriptElement.cpp
+-html/HTMLSelectElement.cpp @header:RenderStyleGetters @cost:9
++html/HTMLSelectElement.cpp @no-unify @header:RenderStyleGetters @cost:9
+ html/HTMLSelectedContentElement.cpp
+ html/HTMLSlotElement.cpp
+ html/HTMLSourceElement.cpp

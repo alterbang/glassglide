@@ -1,0 +1,8 @@
+{
+  "name": "glassglide-build-tools",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "devDependencies": {
+    "@webos-tools/cli": "3.2.6"
+  }
+}

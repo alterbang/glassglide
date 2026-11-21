@@ -1,0 +1,27 @@
+From: GlassGlide contributors
+Subject: [PATCH] WPE: allow a private helper process directory in release builds
+
+A webOS application cannot install helpers at the system-wide build prefix.
+Keep the existing WEBKIT_EXEC_PATH lookup available for WPE without enabling
+the other developer-mode features.
+
+--- a/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
++++ b/Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
+@@ -32,7 +32,7 @@
+ 
+ namespace WebKit {
+ 
+-#if ENABLE(DEVELOPER_MODE)
++#if ENABLE(DEVELOPER_MODE) || PLATFORM(WPE)
+ static String getExecutablePath()
+ {
+     CString executablePath = FileSystem::currentExecutablePath();
+@@ -44,7 +44,7 @@
+ 
+ static String findWebKitProcess(const ASCIILiteral processName)
+ {
+-#if ENABLE(DEVELOPER_MODE)
++#if ENABLE(DEVELOPER_MODE) || PLATFORM(WPE)
+     static const char* execDirectory = g_getenv("WEBKIT_EXEC_PATH");
+     if (execDirectory) {
+         String processPath = FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(execDirectory), processName);

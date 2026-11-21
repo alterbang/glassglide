@@ -1,0 +1,23 @@
+From: GlassGlide contributors
+Subject: [PATCH] WPEPlatform: do not link the unused Wayland EGL wrapper
+
+The Wayland platform does not call wl_egl_window functions. Keep the Wayland
+client and server libraries, but do not add wayland-egl through the generic
+FindWayland result. The webOS SDK provides only a non-functional link stub,
+which must not become a runtime dependency.
+
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/CMakeLists.txt
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/CMakeLists.txt
+@@ -50,9 +50,11 @@ set(WPEPlatformWayland_SYSTEM_INCLUDE_DIRECTORIES
+     ${WPEPlatform_SYSTEM_INCLUDE_DIRECTORIES}
+ )
+ 
++set(WPEPlatformWayland_WAYLAND_LIBRARIES ${WAYLAND_LIBRARIES})
++list(REMOVE_ITEM WPEPlatformWayland_WAYLAND_LIBRARIES wayland-egl)
+ set(WPEPlatformWayland_LIBRARIES
+     GLib::GioUnix
+-    ${WAYLAND_LIBRARIES}
++    ${WPEPlatformWayland_WAYLAND_LIBRARIES}
+     ${WPEPlatform_LIBRARIES}
+ )
+ 

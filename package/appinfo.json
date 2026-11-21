@@ -1,0 +1,13 @@
+{
+  "id": "org.glassglide.browser",
+  "title": "GlassGlide",
+  "version": "0.1.0",
+  "vendor": "GlassGlide",
+  "type": "native",
+  "main": "glassglide-launch",
+  "icon": "icon.png",
+  "largeIcon": "icon.png",
+  "resolution": "1920x1080",
+  "appDescription": "Anteprima locale di GlassGlide",
+  "requiredACG": []
+}

@@ -1,0 +1,28 @@
+--- a/Source/WebCore/platform/graphics/egl/PlatformDisplaySurfaceless.cpp
++++ b/Source/WebCore/platform/graphics/egl/PlatformDisplaySurfaceless.cpp
+@@ -34,6 +34,25 @@
+ std::unique_ptr<PlatformDisplaySurfaceless> PlatformDisplaySurfaceless::create()
+ {
+     const char* extensions = eglQueryString(nullptr, EGL_EXTENSIONS);
++#if PLATFORM(WPE) && ENABLE(WPE_PLATFORM)
++    if (!GLContext::isExtensionSupported(extensions, "EGL_MESA_platform_surfaceless")) {
++        // Older EGL drivers can provide surfaceless contexts on the default display.
++        auto glDisplay = GLDisplay::create(eglGetDisplay(EGL_DEFAULT_DISPLAY));
++        if (!glDisplay)
++            return nullptr;
++        if (!glDisplay->extensions().KHR_surfaceless_context) {
++            glDisplay->terminate();
++            return nullptr;
++        }
++
++        auto display = std::unique_ptr<PlatformDisplaySurfaceless>(
++            new PlatformDisplaySurfaceless(glDisplay.releaseNonNull()));
++#if ENABLE(WEBGL)
++        display->m_anglePlatform = 0;
++#endif
++        return display;
++    }
++#endif
+     if (!GLContext::isExtensionSupported(extensions, "EGL_MESA_platform_surfaceless"))
+         return nullptr;
+ 

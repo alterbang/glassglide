@@ -1,0 +1,69 @@
+From: GlassGlide contributors
+Subject: [PATCH] WPE: compile Document.cpp with a dedicated low-memory PCH
+
+Document.cpp exceeds the shared ARM build host's memory budget with GCC.
+Compile only this source with a private Clang launcher and a prefix containing
+the first group of its existing includes. Keep the remaining WebCore sources
+on the SDK compiler and propagate the separate object to the WPE link.
+
+--- a/Source/WebCore/CMakeLists.txt
++++ b/Source/WebCore/CMakeLists.txt
+@@ -3180,6 +3180,30 @@
+ 
+ WEBKIT_COMPUTE_SOURCES(WebCore)
+ 
++if (PORT STREQUAL "WPE" AND WTF_CPU_ARM AND CMAKE_COMPILER_IS_GNUCXX)
++    if (NOT EXISTS "${GLASSGLIDE_DOCUMENT_LAUNCHER}")
++        message(FATAL_ERROR "GlassGlide's Document compiler launcher is missing")
++    endif ()
++    list(FIND WebCore_SOURCES "dom/Document.cpp" _glassglide_document_index)
++    if (_glassglide_document_index EQUAL -1)
++        message(FATAL_ERROR "GlassGlide expected Document.cpp outside unified bundles")
++    endif ()
++    list(REMOVE_AT WebCore_SOURCES ${_glassglide_document_index})
++    set(_glassglide_document "${WEBCORE_DIR}/dom/Document.cpp")
++    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_glassglide_document}")
++    file(READ "${_glassglide_document}" _glassglide_document_text)
++    set(_glassglide_marker "#include \"Performance.h\"\n")
++    string(FIND "${_glassglide_document_text}" "${_glassglide_marker}" _glassglide_end)
++    if (_glassglide_end EQUAL -1)
++        message(FATAL_ERROR "GlassGlide could not find the Document.cpp prefix boundary")
++    endif ()
++    string(LENGTH "${_glassglide_marker}" _glassglide_marker_length)
++    math(EXPR _glassglide_end "${_glassglide_end} + ${_glassglide_marker_length}")
++    string(SUBSTRING "${_glassglide_document_text}" 0 ${_glassglide_end} _glassglide_prefix)
++    set(_glassglide_prefix_file "${CMAKE_CURRENT_BINARY_DIR}/GlassGlideDocumentPrefix.h")
++    file(GENERATE OUTPUT "${_glassglide_prefix_file}" CONTENT "${_glassglide_prefix}")
++endif ()
++
+ WEBKIT_DEFINE_SUBTARGET_WITH_PREFIX(WebCore WebCoreJSBindings
+     PREFIX WebCoreJSBindingsPrefix.h
+     PREFIX_LANGUAGES CXX
+@@ -3251,6 +3275,17 @@
+ 
+ WEBKIT_FRAMEWORK(WebCore)
+ 
++if (DEFINED _glassglide_prefix_file)
++    add_library(WebCoreDocument OBJECT "${_glassglide_document}")
++    _WEBKIT_TARGET_SETUP(WebCoreDocument WebCore)
++    set_target_properties(WebCoreDocument PROPERTIES
++        CXX_COMPILER_LAUNCHER "${Python_EXECUTABLE};${GLASSGLIDE_DOCUMENT_LAUNCHER}")
++    target_compile_options(WebCoreDocument PRIVATE -O0 -DRELEASE_WITHOUT_OPTIMIZATIONS=ON)
++    target_precompile_headers(WebCoreDocument PRIVATE "${_glassglide_prefix_file}")
++    target_link_libraries(WebCore_PostBuild INTERFACE
++        "$<FILTER:$<TARGET_OBJECTS:WebCoreDocument>,EXCLUDE,\\.(g|p)ch$>")
++endif ()
++
+ if (USE_APPLE_INTERNAL_SDK)
+     WEBKIT_TARGET_USE_PGO(WebCore PROFILE WebCore)
+ endif ()
+@@ -3270,6 +3305,9 @@
+ unset(_WebCore_derived_re)
+ add_dependencies(WebCoreGeneratedSources JavaScriptCoreSharedScripts WTF_CopyPreferences)
+ add_dependencies(WebCore WebCoreGeneratedSources)
++if (TARGET WebCoreDocument)
++    add_dependencies(WebCoreDocument WebCoreGeneratedSources)
++endif ()
+ 
+ if (DEFINED WebCore_EXTRA_LINK_OPTIONS)
+     target_link_options(WebCore PRIVATE ${WebCore_EXTRA_LINK_OPTIONS})

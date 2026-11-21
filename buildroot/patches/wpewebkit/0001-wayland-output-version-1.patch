@@ -1,0 +1,42 @@
+From: GlassGlide contributors
+Subject: [PATCH] WPEPlatform: publish output geometry for wl_output version 1
+
+wl_output version 1 does not have a done event. Update the screen directly
+on geometry and current-mode events in that case, keeping the existing
+batched behavior for newer protocol versions.
+
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEScreenWayland.cpp
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEScreenWayland.cpp
+@@ -80,11 +80,13 @@
+ 
+ static const struct wl_output_listener outputListener = {
+     // geometry
+-    [](void* data, struct wl_output*, int32_t x, int32_t y, int32_t width, int32_t height, int32_t, const char*, const char*, int32_t transform) {
++    [](void* data, struct wl_output* output, int32_t x, int32_t y, int32_t width, int32_t height, int32_t, const char*, const char*, int32_t transform) {
+         WPEScreen* screen = WPE_SCREEN(data);
+         auto* priv = WPE_SCREEN_WAYLAND(screen)->priv;
+         priv->pendingScreenUpdate.x = x;
+         priv->pendingScreenUpdate.y = y;
++        if (wl_output_get_version(output) < WL_OUTPUT_DONE_SINCE_VERSION)
++            wpe_screen_set_position(screen, x, y);
+ 
+         switch (transform) {
+         case WL_OUTPUT_TRANSFORM_90:
+@@ -101,7 +103,7 @@
+         }
+     },
+     // mode
+-    [](void* data, struct wl_output*, uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
++    [](void* data, struct wl_output* output, uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
+         if (!(flags & WL_OUTPUT_MODE_CURRENT))
+             return;
+ 
+@@ -110,6 +112,8 @@
+         priv->pendingScreenUpdate.width = width;
+         priv->pendingScreenUpdate.height = height;
+         wpe_screen_set_refresh_rate(screen, refresh);
++        if (wl_output_get_version(output) < WL_OUTPUT_DONE_SINCE_VERSION)
++            wpe_screen_set_size(screen, width, height);
+     },
+     // done
+     [](void* data, struct wl_output*) {

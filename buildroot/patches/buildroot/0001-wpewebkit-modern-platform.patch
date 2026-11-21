@@ -1,0 +1,27 @@
+From: GlassGlide contributors
+Subject: [PATCH] Use modern WPE platform dependencies for the local fixture
+
+The fixture explicitly disables the legacy WPE API. Build its Wayland and
+xkbcommon dependencies directly instead of selecting the unused FDO backend.
+
+--- a/package/wpewebkit/Config.in
++++ b/package/wpewebkit/Config.in
+@@ -69,7 +69,6 @@ config BR2_PACKAGE_WPEWEBKIT
+ 	select BR2_PACKAGE_WEBP
+ 	select BR2_PACKAGE_WEBP_DEMUX
+ 	select BR2_PACKAGE_WEBP_MUX
+-	select BR2_PACKAGE_WPEBACKEND_FDO
+ 	help
+ 	  WPE (Web Platform for Embedded) port of the WebKit engine,
+ 	  to allow embedders to create simple and performant systems
+--- a/package/wpewebkit/wpewebkit.mk
++++ b/package/wpewebkit/wpewebkit.mk
+@@ -15,7 +15,7 @@ WPEWEBKIT_CPE_ID_VENDOR = wpewebkit
+ WPEWEBKIT_CPE_ID_PRODUCT = wpe_webkit
+ WPEWEBKIT_DEPENDENCIES = host-gperf host-python3 host-ruby host-unifdef \
+ 	harfbuzz icu jpeg libepoxy libgcrypt libgles libsoup3 libtasn1 \
+-	libpng libxslt wayland-protocols webp wpebackend-fdo
++	libpng libxslt libxkbcommon wayland wayland-protocols webp
+ 
+ WPEWEBKIT_CMAKE_BACKEND = ninja
+ 

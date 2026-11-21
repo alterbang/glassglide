@@ -1,0 +1,18 @@
+From: GlassGlide contributors
+Subject: [PATCH] WebCore: compile Document.cpp outside unified bundles
+
+Document.cpp is particularly large. Combining it with seven other sources
+exhausts the shared build host's memory when cross-compiling with GCC.
+Compile it separately so the build remains incremental and uses less memory.
+
+--- a/Source/WebCore/Sources.txt
++++ b/Source/WebCore/Sources.txt
+@@ -1302,7 +1302,7 @@ dom/DeviceOrientationAndMotionAccessController.cpp
+ dom/DeviceOrientationController.cpp
+ dom/DeviceOrientationData.cpp
+ dom/DeviceOrientationEvent.cpp
+-dom/Document.cpp @header:RenderStyleGetters @cost:22
++dom/Document.cpp @header:RenderStyleGetters @cost:22 @no-unify
+ dom/DocumentFontLoader.cpp
+ dom/DocumentFragment.cpp
+ dom/DocumentFullscreen.cpp

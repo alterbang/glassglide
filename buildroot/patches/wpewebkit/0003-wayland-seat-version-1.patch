@@ -1,0 +1,48 @@
+From: GlassGlide contributors
+Subject: [PATCH] WPE: release old Wayland input objects without newer requests
+
+The webOS compositor advertises wl_seat version 1. The release requests on
+pointer, keyboard and touch objects were added in version 3 and cannot be sent
+when capabilities disappear on these seats. Destroy a pending key-repeat
+source before clearing the removed keyboard.
+
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandSeat.cpp
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandSeat.cpp
+@@ -505,7 +505,10 @@ const struct wl_seat_listener WaylandSeat::s_listener = {
+             seat.m_pointer.source = WPE_INPUT_SOURCE_MOUSE;
+             wl_pointer_add_listener(seat.m_pointer.object, &s_pointerListener, data);
+         } else if (!hasPointer && seat.m_pointer.object) {
+-            wl_pointer_release(seat.m_pointer.object);
++            if (wl_pointer_get_version(seat.m_pointer.object) >= WL_POINTER_RELEASE_SINCE_VERSION)
++                wl_pointer_release(seat.m_pointer.object);
++            else
++                wl_pointer_destroy(seat.m_pointer.object);
+             seat.m_pointer = { };
+         }
+ 
+@@ -518,7 +521,12 @@ const struct wl_seat_listener WaylandSeat::s_listener = {
+             seat.m_keyboard.source = WPE_INPUT_SOURCE_KEYBOARD;
+             wl_keyboard_add_listener(seat.m_keyboard.object, &s_keyboardListener, data);
+         } else if (!hasKeyboard && seat.m_keyboard.object) {
+-            wl_keyboard_release(seat.m_keyboard.object);
++            if (wl_keyboard_get_version(seat.m_keyboard.object) >= WL_KEYBOARD_RELEASE_SINCE_VERSION)
++                wl_keyboard_release(seat.m_keyboard.object);
++            else
++                wl_keyboard_destroy(seat.m_keyboard.object);
++            if (seat.m_keyboard.repeat.source)
++                g_source_destroy(seat.m_keyboard.repeat.source.get());
+             seat.m_keyboard = { };
+         }
+ 
+@@ -542,7 +550,10 @@ const struct wl_seat_listener WaylandSeat::s_listener = {
+                 }
+             }
+ 
+-            wl_touch_release(seat.m_touch.object);
++            if (wl_touch_get_version(seat.m_touch.object) >= WL_TOUCH_RELEASE_SINCE_VERSION)
++                wl_touch_release(seat.m_touch.object);
++            else
++                wl_touch_destroy(seat.m_touch.object);
+             seat.m_touch = { };
+         }
+ 

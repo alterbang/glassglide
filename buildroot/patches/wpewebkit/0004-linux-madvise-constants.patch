@@ -1,0 +1,30 @@
+From: GlassGlide contributors
+Subject: [PATCH] bmalloc: include kernel madvise constants with older libc
+
+The webOS SDK's glibc predates these definitions, although its Linux UAPI
+headers and the target kernel support them.
+
+--- a/Source/bmalloc/bmalloc/VMAllocate.h
++++ b/Source/bmalloc/bmalloc/VMAllocate.h
+@@ -55,6 +55,9 @@
+ #endif
+ 
+ #if BOS(LINUX)
++#if !defined(MADV_DONTDUMP) || !defined(MADV_DODUMP)
++#include <linux/mman.h>
++#endif
+ #include <sys/prctl.h>
+ 
+ #ifndef PR_SET_VMA
+--- a/Source/bmalloc/libpas/src/libpas/pas_page_malloc.c
++++ b/Source/bmalloc/libpas/src/libpas/pas_page_malloc.c
+@@ -42,6 +42,9 @@
+ #include <mach/vm_statistics.h>
+ #endif
+ #if PAS_OS(LINUX)
++#if !defined(MADV_DONTDUMP) || !defined(MADV_DODUMP)
++#include <linux/mman.h>
++#endif
+ #include <sys/prctl.h>
+ #endif
+ 

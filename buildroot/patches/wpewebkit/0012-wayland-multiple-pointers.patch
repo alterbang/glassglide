@@ -1,0 +1,364 @@
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEDisplayWayland.cpp
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEDisplayWayland.cpp
+@@ -110,7 +110,7 @@
+     Vector<std::pair<uint32_t, uint64_t>> linuxDMABufFormats;
+     std::unique_ptr<WPE::WaylandSeat> wlSeat;
+     uint32_t wlSeatName;
+-    Vector<std::pair<uint32_t, std::unique_ptr<WPE::WaylandSeat>>> keyboardSeats;
++    Vector<std::pair<uint32_t, std::unique_ptr<WPE::WaylandSeat>>> additionalSeats;
+     bool seatListenersStarted;
+     std::unique_ptr<WPE::WaylandCursor> wlCursor;
+     GRefPtr<WPEDRMDevice> drmDevice;
+@@ -126,7 +126,7 @@
+ {
+     auto* priv = display->priv;
+     unsigned devices = priv->wlSeat ? priv->wlSeat->availableInputDevices() : WPE_AVAILABLE_INPUT_DEVICE_NONE;
+-    for (auto& entry : priv->keyboardSeats)
++    for (auto& entry : priv->additionalSeats)
+         devices |= entry.second->availableInputDevices();
+     wpe_display_set_available_input_devices(WPE_DISPLAY(display), static_cast<WPEAvailableInputDevices>(devices));
+ }
+@@ -243,7 +243,7 @@
+         priv->eventSource = nullptr;
+     }
+ 
+-    priv->keyboardSeats.clear();
++    priv->additionalSeats.clear();
+     priv->wlSeat = nullptr;
+     priv->wlCursor = nullptr;
+     if (priv->clipboard) {
+@@ -306,16 +306,16 @@
+             }
+             auto seat = makeUnique<WPE::WaylandSeat>(wlSeat);
+             if (priv->seatListenersStarted) {
+-                seat->setKeyboardOnly(true);
++                seat->setTouchEnabled(false);
+                 auto* seatPtr = seat.get();
+-                priv->keyboardSeats.append(std::make_pair(name, WTF::move(seat)));
++                priv->additionalSeats.append(std::make_pair(name, WTF::move(seat)));
+                 wpeDisplayWaylandStartSeat(display, *seatPtr);
+                 if (!priv->wlSeat)
+-                    g_warning("A late Wayland seat only supports keyboard input; restart for pointer input");
++                    g_warning("A late Wayland seat does not support touch input; restart for touch input");
+             } else {
+                 if (priv->wlSeat) {
+-                    priv->wlSeat->setKeyboardOnly(true);
+-                    priv->keyboardSeats.append(std::make_pair(priv->wlSeatName, WTF::move(priv->wlSeat)));
++                    priv->wlSeat->setTouchEnabled(false);
++                    priv->additionalSeats.append(std::make_pair(priv->wlSeatName, WTF::move(priv->wlSeat)));
+                 }
+                 priv->wlSeatName = name;
+                 priv->wlSeat = WTF::move(seat);
+@@ -363,20 +363,20 @@
+                 wpe_display_disconnected(WPE_DISPLAY(display), error.get());
+             } else {
+                 priv->wlSeat = nullptr;
+-                if (!priv->keyboardSeats.isEmpty()) {
+-                    auto entry = priv->keyboardSeats.takeLast();
++                if (!priv->additionalSeats.isEmpty()) {
++                    auto entry = priv->additionalSeats.takeLast();
+                     priv->wlSeatName = entry.first;
+                     priv->wlSeat = WTF::move(entry.second);
+-                    priv->wlSeat->setKeyboardOnly(false);
++                    priv->wlSeat->setTouchEnabled(true);
+                 }
+             }
+             return;
+         }
+-        auto seatIndex = priv->keyboardSeats.findIf([name](const auto& entry) {
++        auto seatIndex = priv->additionalSeats.findIf([name](const auto& entry) {
+             return entry.first == name;
+         });
+         if (seatIndex != notFound) {
+-            priv->keyboardSeats.removeAt(seatIndex);
++            priv->additionalSeats.removeAt(seatIndex);
+             if (priv->seatListenersStarted)
+                 wpeDisplayWaylandUpdateInputDevices(display);
+             return;
+@@ -515,7 +515,7 @@
+ 
+         wpeDisplayWaylandStartSeat(display, *priv->wlSeat);
+     }
+-    for (auto& entry : priv->keyboardSeats)
++    for (auto& entry : priv->additionalSeats)
+         wpeDisplayWaylandStartSeat(display, *entry.second);
+ 
+     if (priv->textInputManagerV3) {
+@@ -664,6 +664,16 @@
+ WPE::WaylandSeat* wpeDisplayWaylandGetSeat(WPEDisplayWayland* display)
+ {
+     return display->priv->wlSeat.get();
++}
++
++Vector<WPE::WaylandSeat*> wpeDisplayWaylandGetSeats(WPEDisplayWayland* display)
++{
++    Vector<WPE::WaylandSeat*> seats;
++    if (display->priv->wlSeat)
++        seats.append(display->priv->wlSeat.get());
++    for (auto& entry : display->priv->additionalSeats)
++        seats.append(entry.second.get());
++    return seats;
+ }
+ 
+ WPE::WaylandCursor* wpeDisplayWaylandGetCursor(WPEDisplayWayland* display)
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEDisplayWaylandPrivate.h
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEDisplayWaylandPrivate.h
+@@ -36,6 +36,7 @@
+ 
+ struct xdg_wm_base* wpeDisplayWaylandGetXDGWMBase(WPEDisplayWayland*);
+ WPE::WaylandSeat* wpeDisplayWaylandGetSeat(WPEDisplayWayland*);
++Vector<WPE::WaylandSeat*> wpeDisplayWaylandGetSeats(WPEDisplayWayland*);
+ WPE::WaylandCursor* wpeDisplayWaylandGetCursor(WPEDisplayWayland*);
+ struct wl_data_device_manager* wpeDisplayWaylandGetDataDeviceManager(WPEDisplayWayland*);
+ WPEScreen* wpeDisplayWaylandFindScreen(WPEDisplayWayland*, struct wl_output*);
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEToplevelWayland.cpp
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEToplevelWayland.cpp
+@@ -242,7 +242,7 @@
+     std::unique_ptr<DMABufFeedback> committedDMABufFeedback;
+     GRefPtr<WPEBufferFormats> preferredBufferFormats;
+ 
+-    bool hasPointer;
++    unsigned pointerSeatCount;
+     unsigned focusedSeatCount;
+     bool isUnderTouch;
+     GWeakPtr<WPEView> visibleView;
+@@ -849,18 +849,24 @@
+     return view;
+ }
+ 
+-void wpeToplevelWaylandSetHasPointer(WPEToplevelWayland* toplevel, bool hasPointer)
++bool wpeToplevelWaylandSetHasPointer(WPEToplevelWayland* toplevel, bool hasPointer)
+ {
+     auto* priv = toplevel->priv;
+-    priv->hasPointer = hasPointer;
++    if (hasPointer)
++        ++priv->pointerSeatCount;
++    else if (priv->pointerSeatCount)
++        --priv->pointerSeatCount;
++    else
++        g_warning("Wayland pointer focus was released without a matching enter");
+     if (hasPointer && !priv->visibleView)
+         priv->visibleView.reset(wpeToplevelWaylandFindVisibleView(toplevel));
++    return !!priv->pointerSeatCount;
+ }
+ 
+ WPEView* wpeToplevelWaylandGetVisibleViewUnderPointer(WPEToplevelWayland* toplevel)
+ {
+     auto* priv = toplevel->priv;
+-    return priv->hasPointer ? toplevel->priv->visibleView.get() : nullptr;
++    return priv->pointerSeatCount ? toplevel->priv->visibleView.get() : nullptr;
+ }
+ 
+ bool wpeToplevelWaylandSetIsFocused(WPEToplevelWayland* toplevel, bool isFocused)
+@@ -906,17 +912,25 @@
+         if (priv->visibleView.get() != view)
+             return;
+ 
+-        if (priv->hasPointer) {
+-            if (auto* seat = wpeDisplayWaylandGetSeat(WPE_DISPLAY_WAYLAND(wpe_toplevel_get_display(WPE_TOPLEVEL(toplevel)))))
+-                seat->emitPointerEnter(view);
++        if (priv->pointerSeatCount) {
++            for (auto* seat : wpeDisplayWaylandGetSeats(WPE_DISPLAY_WAYLAND(wpe_toplevel_get_display(WPE_TOPLEVEL(toplevel))))) {
++                if (seat->hasPointerFocus(toplevel)) {
++                    seat->emitPointerEnter(view);
++                    break;
++                }
++            }
+         }
+         if (priv->focusedSeatCount)
+             wpe_view_focus_in(view);
+     } else {
+         if (priv->visibleView && priv->visibleView.get() == view) {
+-            if (priv->hasPointer) {
+-                if (auto* seat = wpeDisplayWaylandGetSeat(WPE_DISPLAY_WAYLAND(wpe_toplevel_get_display(WPE_TOPLEVEL(toplevel)))))
+-                    seat->emitPointerLeave(view);
++            if (priv->pointerSeatCount) {
++                for (auto* seat : wpeDisplayWaylandGetSeats(WPE_DISPLAY_WAYLAND(wpe_toplevel_get_display(WPE_TOPLEVEL(toplevel))))) {
++                    if (seat->hasPointerFocus(toplevel)) {
++                        seat->emitPointerLeave(view);
++                        break;
++                    }
++                }
+             }
+             if (priv->focusedSeatCount)
+                 wpe_view_focus_out(view);
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEToplevelWaylandPrivate.h
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEToplevelWaylandPrivate.h
+@@ -30,7 +30,7 @@
+ 
+ void wpeToplevelWaylandSetOpaqueRectangles(WPEToplevelWayland*, WPERectangle*, unsigned);
+ void wpeToplevelWaylandUpdateOpaqueRegion(WPEToplevelWayland*);
+-void wpeToplevelWaylandSetHasPointer(WPEToplevelWayland*, bool);
++bool wpeToplevelWaylandSetHasPointer(WPEToplevelWayland*, bool);
+ WPEView* wpeToplevelWaylandGetVisibleViewUnderPointer(WPEToplevelWayland*);
+ bool wpeToplevelWaylandSetIsFocused(WPEToplevelWayland*, bool);
+ WPEView* wpeToplevelWaylandGetVisibleFocusedView(WPEToplevelWayland*);
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandCursor.cpp
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandCursor.cpp
+@@ -102,9 +102,14 @@
+ {
+     if (!m_cursorChanged)
+         return;
+-    if (auto* seat = wpeDisplayWaylandGetSeat(m_display))
+-        seat->setCursor(m_surface, m_hotspot.x, m_hotspot.y);
++    for (auto* seat : wpeDisplayWaylandGetSeats(m_display))
++        applyToSeat(*seat);
+     m_cursorChanged = false;
+ }
+ 
++void WaylandCursor::applyToSeat(WaylandSeat& seat) const
++{
++    seat.setCursor(m_surface, m_hotspot.x, m_hotspot.y);
++}
++
+ } // namespace WPE
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandCursor.h
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandCursor.h
+@@ -33,6 +33,7 @@
+ namespace WPE {
+ 
+ class WaylandCursorTheme;
++class WaylandSeat;
+ 
+ class WaylandCursor {
+     WTF_MAKE_TZONE_ALLOCATED(WaylandCursor);
+@@ -43,6 +44,7 @@
+     void setFromName(const char*, double);
+     void setFromBuffer(struct wl_buffer*, uint32_t width, uint32_t height, uint32_t hotspotX, uint32_t hotspotY);
+     void update() const;
++    void applyToSeat(WaylandSeat&) const;
+ 
+ private:
+     WPEDisplayWayland* m_display { nullptr };
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandSeat.cpp
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandSeat.cpp
+@@ -49,6 +49,7 @@
+ 
+ WaylandSeat::~WaylandSeat()
+ {
++    clearPointerFocus();
+     clearKeyboardFocus();
+     g_clear_pointer(&m_pointer.object, wl_pointer_destroy);
+     g_clear_pointer(&m_keyboard.object, wl_keyboard_destroy);
+@@ -68,11 +69,13 @@
+         if (!WPE_IS_TOPLEVEL(toplevel))
+             return;
+ 
++        auto& seat = *static_cast<WaylandSeat*>(data);
+         auto* toplevelWayland = WPE_TOPLEVEL_WAYLAND(toplevel);
+-        wpeToplevelWaylandSetHasPointer(toplevelWayland, true);
+-
+-        auto& seat = *static_cast<WaylandSeat*>(data);
+-        seat.m_pointer.toplevel.reset(toplevelWayland);
++        if (seat.m_pointer.toplevel.get() != toplevelWayland) {
++            seat.clearPointerFocus();
++            seat.m_pointer.toplevel.reset(toplevelWayland);
++            wpeToplevelWaylandSetHasPointer(toplevelWayland, true);
++        }
+         seat.m_pointer.x = wl_fixed_to_double(x);
+         seat.m_pointer.y = wl_fixed_to_double(y);
+         seat.m_pointer.modifiers = 0;
+@@ -87,16 +90,7 @@
+     // leave
+     [](void* data, struct wl_pointer*, uint32_t /*serial*/, struct wl_surface*)
+     {
+-        auto& seat = *static_cast<WaylandSeat*>(data);
+-        if (!seat.m_pointer.toplevel)
+-            return;
+-
+-        GRefPtr<WPEView> view = wpeToplevelWaylandGetVisibleViewUnderPointer(seat.m_pointer.toplevel.get());
+-        wpeToplevelWaylandSetHasPointer(seat.m_pointer.toplevel.get(), false);
+-        seat.m_pointer.toplevel = nullptr;
+-
+-        if (view)
+-            seat.emitPointerLeave(view.get());
++        static_cast<WaylandSeat*>(data)->clearPointerFocus();
+     },
+     // motion
+     [](void* data, struct wl_pointer*, uint32_t time, wl_fixed_t fixedX, wl_fixed_t fixedY)
+@@ -485,12 +479,13 @@
+         auto& seat = *static_cast<WaylandSeat*>(data);
+ 
+         // WL_SEAT_CAPABILITY_POINTER
+-        const bool hasPointer = !seat.m_keyboardOnly && (capabilities & WL_SEAT_CAPABILITY_POINTER);
++        const bool hasPointer = capabilities & WL_SEAT_CAPABILITY_POINTER;
+         if (hasPointer && !seat.m_pointer.object) {
+             seat.m_pointer.object = wl_seat_get_pointer(wlSeat);
+             seat.m_pointer.source = WPE_INPUT_SOURCE_MOUSE;
+             wl_pointer_add_listener(seat.m_pointer.object, &s_pointerListener, data);
+         } else if (!hasPointer && seat.m_pointer.object) {
++            seat.clearPointerFocus();
+             if (wl_pointer_get_version(seat.m_pointer.object) >= WL_POINTER_RELEASE_SINCE_VERSION)
+                 wl_pointer_release(seat.m_pointer.object);
+             else
+@@ -516,7 +511,7 @@
+         }
+ 
+         // WL_SEAT_CAPABILITY_TOUCH
+-        const bool hasTouch = !seat.m_keyboardOnly && (capabilities & WL_SEAT_CAPABILITY_TOUCH);
++        const bool hasTouch = seat.m_touchEnabled && (capabilities & WL_SEAT_CAPABILITY_TOUCH);
+         if (hasTouch && !seat.m_touch.object) {
+             seat.m_touch.object = wl_seat_get_touch(wlSeat);
+             seat.m_touch.source = WPE_INPUT_SOURCE_TOUCHSCREEN;
+@@ -573,9 +568,24 @@
+         wpe_view_focus_out(view.get());
+ }
+ 
++void WaylandSeat::clearPointerFocus()
++{
++    GRefPtr<WPEToplevelWayland> toplevel = m_pointer.toplevel.get();
++    if (!toplevel)
++        return;
++    GRefPtr<WPEView> view = wpeToplevelWaylandGetVisibleViewUnderPointer(toplevel.get());
++    bool stillUnderPointer = wpeToplevelWaylandSetHasPointer(toplevel.get(), false);
++    m_pointer.toplevel = nullptr;
++    m_pointer.enterSerial = 0;
++    m_pointer.modifiers = 0;
++    m_pointer.frame = { };
++    if (view && !stillUnderPointer)
++        emitPointerLeave(view.get());
++}
++
+ void WaylandSeat::setCursor(struct wl_surface* surface, int32_t hotspotX, int32_t hotspotY)
+ {
+-    if (!m_pointer.object)
++    if (!m_pointer.object || !m_pointer.toplevel)
+         return;
+     wl_pointer_set_cursor(m_pointer.object, m_pointer.enterSerial, surface, hotspotX, hotspotY);
+ }
+@@ -583,7 +593,7 @@
+ void WaylandSeat::updateCursor()
+ {
+     if (auto* cursor = wpeDisplayWaylandGetCursor(WPE_DISPLAY_WAYLAND(wpe_toplevel_get_display(WPE_TOPLEVEL(m_pointer.toplevel.get())))))
+-        cursor->update();
++        cursor->applyToSeat(*this);
+ }
+ 
+ void WaylandSeat::emitPointerEnter(WPEView* view) const
+--- a/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandSeat.h
++++ b/Source/WebKit/WPEPlatform/wpe/wayland/WPEWaylandSeat.h
+@@ -51,7 +51,8 @@
+     uint32_t keyboardSerial() const { return m_keyboard.serial; }
+     WPEAvailableInputDevices availableInputDevices() const;
+ 
+-    void setKeyboardOnly(bool keyboardOnly) { m_keyboardOnly = keyboardOnly; }
++    void setTouchEnabled(bool enabled) { m_touchEnabled = enabled; }
++    bool hasPointerFocus(WPEToplevelWayland* toplevel) const { return m_pointer.toplevel.get() == toplevel; }
+     void startListening();
+ 
+     void setCursor(struct wl_surface*, int32_t, int32_t);
+@@ -71,12 +72,13 @@
+     WPEModifiers modifiers() const;
+     void flushScrollEvent();
+     void clearKeyboardFocus();
++    void clearPointerFocus();
+     void handleKeyEvent(uint32_t time, uint32_t key, uint32_t state, bool fromRepeat);
+     bool keyRepeat(Seconds& delay, Seconds& interval);
+ 
+     struct wl_seat* m_seat { nullptr };
+     GRefPtr<WPEKeymap> m_keymap;
+-    bool m_keyboardOnly { false };
++    bool m_touchEnabled { true };
+     struct {
+         struct wl_pointer* object { nullptr };
+         WPEInputSource source { WPE_INPUT_SOURCE_MOUSE };
